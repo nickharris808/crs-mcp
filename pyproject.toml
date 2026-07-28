@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "crs-mcp"
+version = "0.1.0"
+description = "Proof-gated code review for AI agents, over the Model Context Protocol."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+keywords = ["mcp", "model-context-protocol", "formal-verification", "ai-agents", "code-review"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Topic :: Security",
+]
+dependencies = ["certkit>=0.1.0", "exploit-counter>=0.1.0"]
+
+[project.optional-dependencies]
+server = ["mcp>=1.0.0", "anyio>=4.0"]
+dev = ["pytest>=7.0", "mcp>=1.0.0", "anyio>=4.0"]
+
+[project.scripts]
+crs-mcp = "crs_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/crs_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
