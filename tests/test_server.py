@@ -83,3 +83,21 @@ def test_tool_schemas_require_a_box():
     for name in ("certify_guard", "count_exploitability"):
         tool = next(t for t in TOOLS if t.name == name)
         assert "box" in tool.inputSchema["required"]
+
+
+def test_mcp_dependency_is_pinned_to_a_tested_major():
+    """mcp 2.0.0 removed the decorator API this server uses.
+
+    The dependency was originally `mcp>=1.0.0`, which silently pulled 2.0.0 the
+    day it shipped and broke every server test. Verified working on 1.9.0
+    through 1.29.0; the upper bound must stay until 2.x is actually supported.
+    """
+    import re
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text()
+    # Only dependency specifiers carry a version; the bare "mcp" keyword does not.
+    specs = re.findall(r'"mcp(>=[^"]*)"', text)
+    assert specs, "no pinned mcp dependency found"
+    for spec in specs:
+        assert "<2" in spec, f"mcp constraint {spec!r} lacks an upper bound"

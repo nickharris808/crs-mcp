@@ -20,8 +20,8 @@ classifiers = [
 dependencies = ["certkit>=0.1.0", "exploit-counter>=0.1.0"]
 
 [project.optional-dependencies]
-server = ["mcp>=1.0.0", "anyio>=4.0"]
-dev = ["pytest>=7.0", "mcp>=1.0.0", "anyio>=4.0"]
+server = ["mcp>=1.9.0,<2.0.0", "anyio>=4.0"]
+dev = ["pytest>=7.0", "mcp>=1.9.0,<2.0.0", "anyio>=4.0"]
 
 [project.scripts]
 crs-mcp = "crs_mcp.server:main"

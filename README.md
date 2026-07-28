@@ -103,6 +103,14 @@ print(v.verdict)   # CERTIFIED
 Atoms accept either plain integers (what a model will produce) or the `[numerator, denominator]`
 pairs of the on-disk `certkit` format.
 
+## Supported MCP versions
+
+Verified against **mcp 1.9.0 through 1.29.0**, and pinned to `>=1.9.0,<2.0.0`.
+
+`mcp` 2.0.0 changed the server decorator API (`Server.list_tools` no longer exists) and is not yet
+supported — CI caught this the day 2.0.0 shipped. 2.x support is tracked as future work rather than
+claimed here.
+
 ## Scope
 
 - **Linear integer arithmetic only.** Nonlinear terms, heap shape, and aliasing are out of the
