@@ -47,7 +47,13 @@ def test_oversized_box_is_out_of_scope_not_certified():
     v = tools.certify_guard(DOMAIN, guard, SAFETY, big, exact_cap=1000)
     assert v.verdict == OUT_OF_SCOPE
     assert v.verdict != CERTIFIED
-    assert v.detail["reason"] == "box-too-large"
+    assert v.detail["reason"] == "enumeration-too-large"
+    # The refusal must name the quantity that actually hit the limit -- the
+    # enumerated product -- not the box volume, which is far larger and would
+    # send the reader off narrowing the wrong variable.
+    assert v.detail["enumerated_points"] <= v.detail["box_volume"]
+    assert v.detail["closed_form_variable"] in big
+    assert f"{v.detail['enumerated_points']:,}" in v.summary
 
 
 def test_missing_safety_is_out_of_scope():

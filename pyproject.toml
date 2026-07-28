@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "crs-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Proof-gated code review for AI agents, over the Model Context Protocol."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,7 +17,19 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Topic :: Security",
 ]
-dependencies = ["certkit>=0.1.0", "exploit-counter>=0.1.0"]
+# Direct references, deliberately. `certkit` and `exploit-counter` are not on
+# PyPI yet, so a bare `certkit>=0.2.0` makes `pip install ./crs-mcp` fail with
+# "no matching distribution" for anyone who is not us. These URLs work today,
+# for a stranger, with no index and no token.
+#
+# To publish to PyPI later, swap these two lines back to plain version
+# specifiers -- PyPI rejects direct references in uploaded distributions. That
+# swap is the *only* change required, and until it happens this form is what
+# makes the package installable at all.
+dependencies = [
+  "certkit @ git+https://github.com/nickharris808/certkit@main",
+  "exploit-counter @ git+https://github.com/nickharris808/exploit-counter@main",
+]
 
 [project.optional-dependencies]
 server = ["mcp>=1.9.0,<2.0.0", "anyio>=4.0"]
@@ -25,6 +37,11 @@ dev = ["pytest>=7.0", "mcp>=1.9.0,<2.0.0", "anyio>=4.0"]
 
 [project.scripts]
 crs-mcp = "crs_mcp.server:main"
+
+[tool.hatch.metadata]
+# Required by hatchling to permit the "name @ git+https://..." dependencies
+# above. Those exist because the siblings are not on PyPI yet.
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/crs_mcp"]

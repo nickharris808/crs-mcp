@@ -44,9 +44,10 @@ it against `3 + payload <= record_len`."*
   "summary": "The guard admits 509 state(s) the safety property forbids (out of 65,536). Example: {'record_len': 1, 'payload': 0}.",
   "detail": {
     "over_acceptance": 509,
+    "box_volume": 65536,
     "counterexample": {"record_len": 1, "payload": 0},
-    "hit_probability": 0.00776672,
-    "expected_draws_to_hit": 128.75
+    "hit_probability": 0.0077667236328125,
+    "expected_draws_to_hit": 128.75442043222003
   }
 }
 ```
@@ -76,19 +77,61 @@ many words. A tool that only ever returns green is worse than no tool.
 | `verify_certificate` | Re-check a `certkit` certificate without trusting its producer |
 | `explain_refusal` | Turn a verdict into prose, including what it does *not* establish |
 
+`verify_certificate` additionally returns `certificate_verdict`, which is `certkit`'s own
+`ACCEPTED` / `REFUSED` / `UNVERIFIED`. A certificate that **fails** to check is reported as
+`OUT_OF_SCOPE`, never as `PROVEN_UNSOUND`: a bad proof is the absence of evidence, not evidence of
+unsoundness. Only counting states can prove a guard unsound, which is what `certify_guard` does.
+
 ## How it decides, and the honest limit
 
 Certification is by **exhaustive integer counting** over the box you declare. That is sound and
 complete *for that box* — and says nothing outside it, which is why the box is a required argument
 rather than something inferred from context.
 
-Enumeration has a ceiling. Past roughly 500,000 points this returns `OUT_OF_SCOPE` rather than
-stalling your agent for a minute. Deciding a full 32-bit domain needs a decision procedure that does
-not enumerate — a solver-free elimination method with replayable certificates. **That procedure is
-not part of this package.** This tier gives you real verdicts on the boxes it can enumerate, and an
+The counter enumerates every variable **except the widest**, which it solves in closed form. So the
+cost is the product of the *other* ranges, and the ceiling applies to that product — not to the box
+volume. The limit is **500,000 enumerated points**. Measured on this machine:
+
+| Box | Volume | Enumerated | Verdict | Time |
+|---|---|---|---|---|
+| `payload=0:255, record_len=0:255` | 65,536 | 256 | CERTIFIED | 2 ms |
+| `payload=0:65535, record_len=0:65535` | 4,294,967,296 | 65,536 | CERTIFIED | 449 ms |
+| `payload=0:499999, record_len=0:10^9` | 5.0 × 10^14 | 500,000 | CERTIFIED | 3,309 ms |
+| `payload=0:500000, record_len=0:10^9` | 5.0 × 10^14 | 500,001 | `OUT_OF_SCOPE` | 0 ms |
+| three variables, `0:699` each | 343,000,000 | 490,000 | CERTIFIED | 3,338 ms |
+| three variables, `0:800` each | 513,922,401 | 641,601 | `OUT_OF_SCOPE` | 0 ms |
+
+Reproduce with `python benchmarks/ceiling.py` — that script generates exactly this table, and the
+numbers above are its real output. Timings are machine-dependent; the verdicts and enumerated counts
+are not.
+
+Two consequences worth stating plainly, because the earlier version of this README got both wrong:
+
+- **A two-variable box spanning the full 2^32 is decided**, in under half a second. This README
+  previously claimed it would be refused.
+- **Narrowing the widest variable does not help.** It is already free. If you get `OUT_OF_SCOPE`,
+  narrow one of the others; the refusal message names which variable is the free one.
+
+Deciding a full 32-bit domain in *three or more* variables needs a decision procedure that does not
+enumerate — a solver-free elimination method with replayable certificates. **That procedure is not
+part of this package.** This tier gives you real verdicts on the boxes it can enumerate, and an
 honest refusal on the ones it cannot.
 
 If you need verdicts over full machine-word domains, that is the commercial offering.
+
+## What the tool refuses to answer
+
+A verdict is only worth having if the question could have come out the other way. These are rejected
+with `OUT_OF_SCOPE` rather than answered:
+
+| Input | Why it is refused |
+|---|---|
+| A box holding one point, e.g. `{"p": [0,0], "r": [0,0]}` | "No escapes found" is true there no matter how unsound the guard is. |
+| An inverted range, e.g. `{"p": [10,2]}` | The box is empty, so a zero count is vacuous. |
+| An atom naming a variable the box does not declare | That variable is unbounded; it used to raise `KeyError`. |
+| A guard or safety atom that fails to parse | Malformed input is a refusal with a reason, never a traceback. |
+
+Each refusal names the offending variable and says what to change.
 
 ## Use from Python
 
@@ -138,9 +181,16 @@ pip install -e ".[dev]"
 pytest
 ```
 
-24 tests. `test_tools.py` covers verdict semantics; `test_server.py` does real `tools/list` and
+60 tests. `test_tools.py` covers verdict semantics; `test_server.py` does real `tools/list` and
 `tools/call` round-trips through the registered handlers, because a server whose tool functions are
 perfect but whose handlers are misregistered would pass every test in the other file.
+
+`test_adversarial.py` holds the ones that matter most. Its oracle is a single sentence — *no input
+may produce a confident-looking answer that is wrong* — and it attacks `CERTIFIED` specifically,
+because that is the word an agent reads as "approved, commit it". It also carries the
+**differential** test: `certkit` and `exploit-counter` are independent implementations of the same
+question (rational refutation arithmetic vs. integer enumeration), and both are cross-checked against
+brute force on every input. A disagreement between them is a soundness bug in whichever is wrong.
 
 ## The rest of the toolkit
 

@@ -24,7 +24,14 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from certkit import Atom, atom, atom_from_json, check_certificate, negate
-from exploit_counter import box_volume, count_conjunction, find_witness
+from exploit_counter import (
+    BoxError,
+    box_volume,
+    count_conjunction,
+    enumeration_cost,
+    find_witness,
+    validate_box,
+)
 
 __all__ = [
     "CERTIFIED",
@@ -43,9 +50,12 @@ CERTIFIED = "CERTIFIED"
 PROVEN_UNSOUND = "PROVEN_UNSOUND"
 OUT_OF_SCOPE = "OUT_OF_SCOPE"
 
-# Kept well below the counting package's default. An agent-facing tool should
-# answer in seconds or decline; a thirty-second stall is a worse experience than
-# an honest "too big for the open tier".
+# The cap applies to the *enumerated* points, not the box volume. The counter
+# enumerates every variable except the widest and closes the form over that one,
+# so a two-variable box spanning 2^32 points costs only 2^16 enumerations and is
+# decided in well under a second. Three-variable boxes are where the product
+# bites. Kept well below the counting package's default because an agent-facing
+# tool should answer in seconds or decline.
 AGENT_EXACT_CAP = 500_000
 
 
@@ -125,7 +135,12 @@ def certify_guard(
         g = parse_atoms(guard)
         s = parse_atoms(safety)
         b = parse_box(box)
-    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+    except (KeyError, TypeError, ValueError, AttributeError, ArithmeticError) as exc:
+        # ArithmeticError covers the two an adversarial suite found escaping:
+        # a coefficient of Infinity (OverflowError from Fraction) and a
+        # [numerator, 0] pair (ZeroDivisionError). Both are attacker-reachable
+        # from a model-authored atom, and a traceback out of an agent-facing
+        # tool is a failure mode of its own.
         return Verdict(
             OUT_OF_SCOPE,
             f"could not parse the request: {exc}",
@@ -146,9 +161,25 @@ def certify_guard(
         )
 
     base = list(d) + list(g)
+    all_atoms = base + [negate(c) for c in s]
+
+    # Refuse a box that cannot carry a verdict before counting anything. An
+    # inverted or single-point box would otherwise count zero escapes and be
+    # reported as CERTIFIED, and an atom naming an undeclared variable used to
+    # escape as a raw KeyError.
+    try:
+        validate_box(b, all_atoms, allow_degenerate=False)
+    except BoxError as exc:
+        return Verdict(
+            OUT_OF_SCOPE,
+            f"the declared box cannot support a verdict: {exc}",
+            {"reason": "unusable-box", "detail": str(exc)},
+        )
+
     total = 0
     witness: dict[str, int] | None = None
     volume = box_volume(b)
+    enumerated, closed_form = enumeration_cost(b)
 
     for _i, conjunct in enumerate(s):
         atoms = base + [negate(conjunct)]
@@ -157,13 +188,18 @@ def certify_guard(
             return Verdict(
                 OUT_OF_SCOPE,
                 (
-                    "the declared box is too large to decide by exhaustive counting "
-                    f"({volume:,} points). This open tier decides by enumeration; "
-                    "deciding domains of this size needs the solver-free decision "
-                    "procedure, which is not part of this package."
+                    f"deciding this box would enumerate {enumerated:,} points, above the "
+                    f"{exact_cap:,} limit. The counter enumerates every variable except the "
+                    f"widest ({closed_form!r}, which is solved in closed form), so the cost "
+                    f"is the product of the other ranges -- not the {volume:,}-point box "
+                    "volume. Narrowing any variable other than the widest is what reduces "
+                    "it. Deciding domains of this size without enumerating needs the "
+                    "solver-free decision procedure, which is not part of this package."
                 ),
                 {
-                    "reason": "box-too-large",
+                    "reason": "enumeration-too-large",
+                    "enumerated_points": enumerated,
+                    "closed_form_variable": closed_form,
                     "box_volume": volume,
                     "exact_cap": exact_cap,
                 },
@@ -218,22 +254,55 @@ def count_exploitability(
 
 
 def verify_certificate(spec: Mapping[str, Any], cert: Mapping[str, Any]) -> dict[str, Any]:
-    """Re-check a certkit certificate against its specification."""
-    report = check_certificate(spec, cert)
-    return {
-        "verdict": CERTIFIED
-        if report.ok
-        else PROVEN_UNSOUND
-        if report.obligations
-        else OUT_OF_SCOPE,
-        "ok": report.ok,
-        "reason": report.reason,
-        "obligations": report.obligations,
-        "note": (
+    """Re-check a certkit certificate against its specification.
+
+    A certificate that fails to check is **not** evidence that the guard is
+    unsound -- it is the absence of a proof, which is why this never returns
+    ``PROVEN_UNSOUND``. Only counting states can prove unsoundness; use
+    :func:`certify_guard` for that.
+    """
+    try:
+        report = check_certificate(spec, cert)
+    except (KeyError, TypeError, ValueError, AttributeError, ArithmeticError) as exc:
+        return {
+            "verdict": OUT_OF_SCOPE,
+            "ok": False,
+            "certificate_verdict": "REFUSED",
+            "reason": f"the certificate or spec could not be parsed: {exc}",
+            "obligations": [],
+            "note": "Malformed input is a refusal, not an approval.",
+        }
+
+    if report.verdict == "ACCEPTED":
+        verdict = CERTIFIED
+        note = (
             "The checker rebuilds each obligation from the spec and ignores any "
             "atoms the certificate carries, so a certificate proving an unrelated "
             "easy system cannot pass."
-        ),
+        )
+    elif report.verdict == "UNVERIFIED":
+        verdict = OUT_OF_SCOPE
+        note = (
+            "The multipliers checked out, but the certificate is not bound to this "
+            "spec, so nothing establishes that it was issued for it. This is NOT an "
+            "approval."
+        )
+    else:
+        verdict = OUT_OF_SCOPE
+        note = (
+            "The certificate did not check. That means 'not proven' -- it is NOT "
+            "evidence that the guard is unsound, and must not be reported as such. "
+            "To decide soundness, count states with certify_guard."
+        )
+
+    return {
+        "verdict": verdict,
+        "ok": report.ok,
+        "certificate_verdict": report.verdict,
+        "binding_verified": report.binding_verified,
+        "reason": report.reason,
+        "obligations": report.obligations,
+        "note": note,
     }
 
 
@@ -273,13 +342,22 @@ def explain_refusal(verdict: Mapping[str, Any]) -> str:
         return " ".join(parts)
 
     reason = detail.get("reason", "unknown")
-    if reason == "box-too-large":
+    if reason in ("enumeration-too-large", "box-too-large"):
         return (
             "The request was OUT OF SCOPE, which is not a pass and not a failure. "
-            f"The declared box has {detail.get('box_volume', 0):,} points, beyond "
-            "what this package decides by exhaustive enumeration. Either narrow the "
-            "box, or use a decision procedure that does not enumerate. Do not treat "
-            "this as approval."
+            f"Deciding it would enumerate {detail.get('enumerated_points', 0):,} points, "
+            f"beyond the {detail.get('exact_cap', 0):,} this package will spend. Note that "
+            "the limit is the enumerated product, not the "
+            f"{detail.get('box_volume', 0):,}-point box volume -- the widest variable "
+            f"({detail.get('closed_form_variable')!r}) is solved in closed form and costs "
+            "nothing, so narrowing one of the *other* variables is what helps. Do not "
+            "treat this as approval."
+        )
+    if reason == "unusable-box":
+        return (
+            "The request was OUT OF SCOPE: the declared box cannot support a verdict. "
+            f"{detail.get('detail', '')} Nothing was certified and nothing was refuted; "
+            "this is emphatically not an approval."
         )
     if reason == "empty-safety":
         return (
