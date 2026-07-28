@@ -94,12 +94,19 @@ volume. The limit is **500,000 enumerated points**. Measured on this machine:
 
 | Box | Volume | Enumerated | Verdict | Time |
 |---|---|---|---|---|
-| `payload=0:255, record_len=0:255` | 65,536 | 256 | CERTIFIED | 2 ms |
-| `payload=0:65535, record_len=0:65535` | 4,294,967,296 | 65,536 | CERTIFIED | 449 ms |
-| `payload=0:499999, record_len=0:10^9` | 5.0 × 10^14 | 500,000 | CERTIFIED | 3,309 ms |
+| `payload=0:255, record_len=0:255` | 65,536 | 256 | CERTIFIED | 0 ms |
+| `payload=0:65535, record_len=0:65535` | 4,294,967,296 | 65,536 | CERTIFIED | 30 ms |
+| `payload=0:499999, record_len=0:10^9` | 5.0 × 10^14 | 500,000 | CERTIFIED | 227 ms |
 | `payload=0:500000, record_len=0:10^9` | 5.0 × 10^14 | 500,001 | `OUT_OF_SCOPE` | 0 ms |
-| three variables, `0:699` each | 343,000,000 | 490,000 | CERTIFIED | 3,338 ms |
+| three variables, `0:699` each | 343,000,000 | 490,000 | CERTIFIED | 212 ms |
 | three variables, `0:800` each | 513,922,401 | 641,601 | `OUT_OF_SCOPE` | 0 ms |
+
+Every decision inside the cap lands in under a quarter second, so an agent call does not stall. That
+was not true before: profiling the worst case showed ~70% of the time inside Python's `Fraction`
+type, so `exploit-counter` now runs an integer-only inner loop when every coefficient is an integer
+(which every bounds relation is). Integers are a subset of the rationals, so this is the same
+arithmetic — not a faster approximation — and `test_integer_and_rational_paths_agree` checks the two
+implementations against each other. Measured effect on the row above: **3,309 ms → 227 ms**.
 
 Reproduce with `python benchmarks/ceiling.py` — that script generates exactly this table, and the
 numbers above are its real output. Timings are machine-dependent; the verdicts and enumerated counts
@@ -191,6 +198,15 @@ because that is the word an agent reads as "approved, commit it". It also carrie
 **differential** test: `certkit` and `exploit-counter` are independent implementations of the same
 question (rational refutation arithmetic vs. integer enumeration), and both are cross-checked against
 brute force on every input. A disagreement between them is a soundness bug in whichever is wrong.
+
+## Documentation
+
+| | |
+|---|---|
+| [`SCOPE.md`](SCOPE.md) | what each verdict establishes, and what it does not |
+| [`benchmarks/ceiling.py`](benchmarks/ceiling.py) | regenerates the decision-ceiling table above |
+| [certkit's TUTORIAL](https://github.com/nickharris808/certkit/blob/main/TUTORIAL.md) | end-to-end worked example |
+| [certkit's TROUBLESHOOTING](https://github.com/nickharris808/certkit/blob/main/TROUBLESHOOTING.md) | every error string in the toolkit |
 
 ## The rest of the toolkit
 
