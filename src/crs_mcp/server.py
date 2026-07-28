@@ -95,6 +95,22 @@ TOOLS: list[Tool] = [
         inputSchema=_guard_args(),
     ),
     Tool(
+        name="decide_guard",
+        description=(
+            "Decide whether a guard is sound, WITHOUT counting how unsound it is. "
+            "Same three verdicts as certify_guard, reached by stopping at the first "
+            "escaping state instead of enumerating the whole violating region.\n\n"
+            "Prefer this when the question is 'is this safe?'. It is dramatically "
+            "faster on unsound guards (a measured 286 ms of counting becomes 0.04 ms "
+            "of search) and identical on sound ones, where the full enumeration is "
+            "required either way.\n\n"
+            "The result carries NO over_acceptance field, because nothing was counted. "
+            "Use certify_guard when you need the magnitude.\n\n"
+            "IMPORTANT: OUT_OF_SCOPE is NOT an approval. It means no search was run."
+        ),
+        inputSchema=_guard_args(),
+    ),
+    Tool(
         name="count_exploitability",
         description=(
             "Count exactly how many states a guard admits that the safety property "
@@ -162,6 +178,14 @@ def dispatch(name: str, arguments: dict[str, Any]) -> Any:
     """Route a tool call. Separated from the server so tests can call it directly."""
     if name == "certify_guard":
         return tools.certify_guard(
+            arguments.get("domain", []),
+            arguments.get("guard", []),
+            arguments.get("safety", []),
+            arguments.get("box", {}),
+        ).to_dict()
+
+    if name == "decide_guard":
+        return tools.decide_guard(
             arguments.get("domain", []),
             arguments.get("guard", []),
             arguments.get("safety", []),

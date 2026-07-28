@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "crs-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "Proof-gated code review for AI agents, over the Model Context Protocol."
 readme = "README.md"
 requires-python = ">=3.10"

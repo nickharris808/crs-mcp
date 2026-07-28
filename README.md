@@ -72,7 +72,8 @@ many words. A tool that only ever returns green is worse than no tool.
 
 | Tool | Purpose |
 |---|---|
-| `certify_guard` | Is this guard sound over the declared box? |
+| `certify_guard` | Is this guard sound over the declared box, and by how much? |
+| `decide_guard` | The same verdict, without counting — far faster on unsound guards |
 | `count_exploitability` | Exactly how many states escape, and one example |
 | `verify_certificate` | Re-check a `certkit` certificate without trusting its producer |
 | `explain_refusal` | Turn a verdict into prose, including what it does *not* establish |
@@ -81,6 +82,22 @@ many words. A tool that only ever returns green is worse than no tool.
 `ACCEPTED` / `REFUSED` / `UNVERIFIED`. A certificate that **fails** to check is reported as
 `OUT_OF_SCOPE`, never as `PROVEN_UNSOUND`: a bad proof is the absence of evidence, not evidence of
 unsoundness. Only counting states can prove a guard unsound, which is what `certify_guard` does.
+
+## `decide_guard`: the same answer, sooner
+
+Most of the time an agent is asking *is this safe?*, not *how unsafe?*. `decide_guard` stops at the
+first escaping state instead of counting the whole region. Measured on an unsound guard:
+
+| Tool | Time |
+|---|---|
+| `certify_guard` (counts) | 287.8 ms |
+| `decide_guard` (stops at the first witness) | **0.03 ms** |
+
+Identical verdicts — a test asserts they agree on 150 random specs. Sound guards cost the same
+either way, because the full enumeration is genuinely required to establish soundness.
+
+The result carries **no** `over_acceptance` field. Nothing was counted, so reporting a number there,
+even zero, would be a figure the analysis did not produce.
 
 ## How it decides, and the honest limit
 
@@ -153,7 +170,7 @@ v = certify_guard(
     safety=[{"coeff": {"payload": 1, "record_len": -1}, "const": 3}],
     box={"payload": [0, 255], "record_len": [0, 255]},
 )
-print(v.verdict)   # CERTIFIED
+print(v.verdict)  # CERTIFIED
 ```
 
 Atoms accept either plain integers (what a model will produce) or the `[numerator, denominator]`

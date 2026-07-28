@@ -340,3 +340,80 @@ def test_renaming_variables_does_not_change_the_verdict():
         rename(DOMAIN), rename(GUARD), rename(SAFETY), {ren[k]: v for k, v in BOX.items()}
     )
     assert a.verdict == b.verdict
+
+
+# --------------------------------------------------------------------------- #
+# decide_guard -- the fast path must not become a sloppier path
+# --------------------------------------------------------------------------- #
+
+
+def test_decide_guard_agrees_with_certify_guard_on_random_specs():
+    """Same verdict, reached without counting. A disagreement is a bug."""
+    rng = random.Random(5150)
+    raw_box = {"payload": [0, 25], "record_len": [0, 25]}
+    dom = [{"coeff": {"payload": -1}}, {"coeff": {"payload": 1}, "const": -25}]
+    for _ in range(150):
+        gk, sk = rng.randint(0, 10), rng.randint(0, 10)
+        g = [{"coeff": {"payload": 1, "record_len": -1}, "const": gk}]
+        s = [{"coeff": {"payload": 1, "record_len": -1}, "const": sk}]
+        a = tools.certify_guard(dom, g, s, raw_box)
+        b = tools.decide_guard(dom, g, s, raw_box)
+        assert a.verdict == b.verdict, (gk, sk, a.verdict, b.verdict)
+
+
+def test_decide_guard_never_reports_a_count_it_did_not_compute():
+    """Nothing was counted, so no over_acceptance field -- not even zero."""
+    for guard in (GUARD, UNSOUND_GUARD):
+        v = tools.decide_guard(DOMAIN, guard, SAFETY, BOX)
+        assert "over_acceptance" not in v.detail
+        assert v.detail["counted"] is False
+
+
+def test_decide_guard_counterexample_is_real():
+    v = tools.decide_guard(DOMAIN, UNSOUND_GUARD, SAFETY, BOX)
+    assert v.verdict == PROVEN_UNSOUND
+    cx = v.detail["counterexample"]
+    assert 1 + cx["payload"] <= cx["record_len"]
+    assert not (3 + cx["payload"] <= cx["record_len"])
+
+
+def test_decide_guard_refuses_unusable_boxes():
+    v = tools.decide_guard(DOMAIN, UNSOUND_GUARD, SAFETY, {"payload": [0, 0], "record_len": [0, 0]})
+    assert v.verdict == OUT_OF_SCOPE
+    assert v.detail["reason"] == "unusable-box"
+
+
+def test_decide_guard_abstains_above_the_cap_without_claiming_soundness():
+    big = {"payload": [0, 999], "record_len": [0, 999], "extra": [0, 999]}
+    v = tools.decide_guard(DOMAIN, GUARD, SAFETY, big, exact_cap=1000)
+    assert v.verdict == OUT_OF_SCOPE
+    assert v.verdict != CERTIFIED
+    assert "No search was run" in v.summary
+
+
+@pytest.mark.parametrize("junk", GARBAGE)
+def test_decide_guard_never_certifies_garbage(junk):
+    for slot in range(3):
+        args = [DOMAIN, GUARD, SAFETY]
+        args[slot] = junk
+        assert tools.decide_guard(*args, BOX).verdict != CERTIFIED
+
+
+@pytest.mark.parametrize("box", BAD_BOXES)
+def test_decide_guard_never_certifies_a_bad_box(box):
+    assert tools.decide_guard(DOMAIN, GUARD, SAFETY, box).verdict != CERTIFIED
+
+
+def test_decide_guard_is_registered_as_an_mcp_tool():
+    from crs_mcp.server import TOOLS, dispatch
+
+    names = [t.name for t in TOOLS]
+    assert "decide_guard" in names
+    out = dispatch(
+        "decide_guard",
+        {"domain": DOMAIN, "guard": UNSOUND_GUARD, "safety": SAFETY, "box": BOX},
+    )
+    assert out["verdict"] == PROVEN_UNSOUND
+    # The tool description must warn the agent, like the others do.
+    desc = next(t.description for t in TOOLS if t.name == "decide_guard")
+    assert "NOT an approval" in desc
