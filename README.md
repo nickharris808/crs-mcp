@@ -176,6 +176,38 @@ print(v.verdict)  # CERTIFIED
 Atoms accept either plain integers (what a model will produce) or the `[numerator, denominator]`
 pairs of the on-disk `certkit` format.
 
+## Not on MCP? The tools work anyway
+
+MCP is the transport this package was built around, but the tools are just functions that take JSON
+and return JSON. Nothing about them requires a framework — or even a server:
+
+```python
+from crs_mcp import call, openai_tools, anthropic_tools, json_schemas
+
+call("decide_guard", {"guard": [...], "safety": [...], "box": {...}})   # run one, no server
+openai_tools()       # OpenAI function-calling schema, for `tools=`
+anthropic_tools()    # Anthropic tool-use schema (input_schema, not parameters)
+json_schemas()       # standalone JSON Schema documents, one per tool
+```
+
+```bash
+python -m crs_mcp.adapters anthropic > tools.json    # paste into an agent config
+```
+
+LangChain users get `crs_mcp.adapters.langchain_tools()`. LangChain is **not** a dependency of this
+package; the function imports it on call and raises with an install instruction if it is missing,
+rather than silently returning a partial integration.
+
+All of these are generated from one catalogue (`crs_mcp.catalog`), which imports nothing outside the
+standard library — the schemas used to live inside the MCP server module and were therefore
+unreachable unless you had `mcp` installed.
+
+**The descriptions are load-bearing.** Each one states what a verdict does *not* establish, because
+an agent that reads `OUT_OF_SCOPE` as "no problems found" will merge unsafe code. An adapter that
+dropped those sentences while keeping the name and schema would look perfectly correct, so
+`check_descriptions_intact()` exists and every adapter's output is tested against it. No adapter
+maps `OUT_OF_SCOPE` onto a boolean, a score, or a pass.
+
 ## Supported MCP versions
 
 Verified against **mcp 1.9.0 through 1.29.0**, and pinned to `>=1.9.0,<2.0.0`.

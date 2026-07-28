@@ -15,7 +15,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from . import tools
+from . import adapters
+from .catalog import TOOL_SPECS
 
 try:
     from mcp.server import Server
@@ -27,135 +28,14 @@ except ImportError as exc:  # pragma: no cover - exercised only without the SDK
     ) from exc
 
 
-ATOM_SCHEMA = {
-    "type": "array",
-    "description": (
-        "Conjunction of linear atoms. Each atom means "
-        "sum(coeff[v]*v) + const <= 0, or < 0 when strict is true. "
-        'Example: {"coeff": {"payload": 1, "record_len": -1}, "const": 19} '
-        "means payload - record_len + 19 <= 0, i.e. 19 + payload <= record_len."
-    ),
-    "items": {
-        "type": "object",
-        "properties": {
-            "coeff": {"type": "object", "additionalProperties": {"type": "number"}},
-            "const": {"type": "number", "default": 0},
-            "strict": {"type": "boolean", "default": False},
-        },
-        "required": ["coeff"],
-    },
-}
-
-BOX_SCHEMA = {
-    "type": "object",
-    "description": (
-        'Integer bounds per variable, e.g. {"payload": [0, 65535]}. Required: an '
-        "unbounded domain has no finite state count and will be refused."
-    ),
-    "additionalProperties": {
-        "type": "array",
-        "items": {"type": "integer"},
-        "minItems": 2,
-        "maxItems": 2,
-    },
-}
-
-
-def _guard_args(required_safety: bool = True) -> dict[str, Any]:
-    return {
-        "type": "object",
-        "properties": {
-            "domain": {**ATOM_SCHEMA, "description": "Constraints bounding the state space."},
-            "guard": {**ATOM_SCHEMA, "description": "What the code checks before the access."},
-            "safety": {
-                **ATOM_SCHEMA,
-                "description": "What must hold. Each atom is one obligation.",
-            },
-            "box": BOX_SCHEMA,
-        },
-        "required": ["guard", "safety", "box"],
-    }
-
-
+# The tool catalogue lives in `catalog`, which imports nothing outside the
+# standard library. This module turns it into MCP `Tool` objects; `adapters`
+# turns the same catalogue into OpenAI, Anthropic and LangChain shapes. One
+# source, so a caveat cannot be present in one integration and missing from
+# another.
 TOOLS: list[Tool] = [
-    Tool(
-        name="certify_guard",
-        description=(
-            "Decide whether a guard predicate is sound: does it admit any state the "
-            "safety property forbids, within a declared integer box?\n\n"
-            "Returns exactly one of three verdicts:\n"
-            "  CERTIFIED      - no forbidden state is admitted, over the whole box.\n"
-            "  PROVEN_UNSOUND - at least one is, and a concrete counterexample is given.\n"
-            "  OUT_OF_SCOPE   - the box is too large to decide by enumeration.\n\n"
-            "IMPORTANT: OUT_OF_SCOPE is NOT an approval and NOT a clean bill of health. "
-            "It means no verdict was reached. Never report it to a user as 'no issues "
-            "found'. CERTIFIED is a statement about the declared box only and says "
-            "nothing about states outside it."
-        ),
-        inputSchema=_guard_args(),
-    ),
-    Tool(
-        name="decide_guard",
-        description=(
-            "Decide whether a guard is sound, WITHOUT counting how unsound it is. "
-            "Same three verdicts as certify_guard, reached by stopping at the first "
-            "escaping state instead of enumerating the whole violating region.\n\n"
-            "Prefer this when the question is 'is this safe?'. It is dramatically "
-            "faster on unsound guards (a measured 286 ms of counting becomes 0.04 ms "
-            "of search) and identical on sound ones, where the full enumeration is "
-            "required either way.\n\n"
-            "The result carries NO over_acceptance field, because nothing was counted. "
-            "Use certify_guard when you need the magnitude.\n\n"
-            "IMPORTANT: OUT_OF_SCOPE is NOT an approval. It means no search was run."
-        ),
-        inputSchema=_guard_args(),
-    ),
-    Tool(
-        name="count_exploitability",
-        description=(
-            "Count exactly how many states a guard admits that the safety property "
-            "forbids, and return one concrete example. Use this after "
-            "certify_guard returns PROVEN_UNSOUND to quantify the exposure.\n\n"
-            "The count is a triggerability figure under uniform sampling over the "
-            "declared box. It is not a severity score, not CVSS, and not a claim that "
-            "any counted state is weaponisable."
-        ),
-        inputSchema=_guard_args(),
-    ),
-    Tool(
-        name="verify_certificate",
-        description=(
-            "Re-check a certkit proof certificate against its specification. Use this "
-            "when someone hands you a certificate and you want to confirm it without "
-            "trusting the tool that produced it.\n\n"
-            "The checker rebuilds every obligation from the spec and ignores any atoms "
-            "the certificate carries, so a certificate that proves an unrelated easy "
-            "system cannot pass."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "spec": {"type": "object", "description": "A certkit/spec/v1 object."},
-                "cert": {"type": "object", "description": "A certkit/farkas/v1 object."},
-            },
-            "required": ["spec", "cert"],
-        },
-    ),
-    Tool(
-        name="explain_refusal",
-        description=(
-            "Turn a verdict from certify_guard into prose suitable for relaying to a "
-            "human, including what the verdict does not establish. Use this rather "
-            "than paraphrasing a verdict yourself."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "verdict": {"type": "object", "description": "A verdict object as returned above."}
-            },
-            "required": ["verdict"],
-        },
-    ),
+    Tool(name=spec.name, description=spec.description, inputSchema=spec.input_schema)
+    for spec in TOOL_SPECS
 ]
 
 
@@ -175,38 +55,16 @@ def build_server() -> Server:
 
 
 def dispatch(name: str, arguments: dict[str, Any]) -> Any:
-    """Route a tool call. Separated from the server so tests can call it directly."""
-    if name == "certify_guard":
-        return tools.certify_guard(
-            arguments.get("domain", []),
-            arguments.get("guard", []),
-            arguments.get("safety", []),
-            arguments.get("box", {}),
-        ).to_dict()
+    """Route a tool call. Separated from the server so tests can call it directly.
 
-    if name == "decide_guard":
-        return tools.decide_guard(
-            arguments.get("domain", []),
-            arguments.get("guard", []),
-            arguments.get("safety", []),
-            arguments.get("box", {}),
-        ).to_dict()
-
-    if name == "count_exploitability":
-        return tools.count_exploitability(
-            arguments.get("domain", []),
-            arguments.get("guard", []),
-            arguments.get("safety", []),
-            arguments.get("box", {}),
-        )
-
-    if name == "verify_certificate":
-        return tools.verify_certificate(arguments.get("spec", {}), arguments.get("cert", {}))
-
-    if name == "explain_refusal":
-        return {"explanation": tools.explain_refusal(arguments.get("verdict", {}))}
-
-    return {"error": f"unknown tool {name!r}"}
+    The handlers live in `adapters` so that every integration -- MCP, OpenAI,
+    LangChain, a plain script -- runs the same code path. A second copy here
+    would be a second place for a verdict to be reshaped.
+    """
+    try:
+        return adapters.call(name, arguments)
+    except adapters.UnknownTool:
+        return {"error": f"unknown tool {name!r}"}
 
 
 def main() -> None:

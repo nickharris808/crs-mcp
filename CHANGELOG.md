@@ -3,6 +3,25 @@
 All notable changes to this package. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning is [semantic](https://semver.org/).
 
+## [0.4.0]
+
+### Added
+- **The tools are usable without MCP.** `crs_mcp.adapters` emits the catalogue as OpenAI
+  function-calling schemas, Anthropic tool-use schemas, standalone JSON Schema documents, plain
+  Python callables, and (on request) LangChain `StructuredTool`s. `call(name, args)` runs a tool with
+  no server and no transport. `python -m crs_mcp.adapters anthropic` prints a config to paste.
+- `crs_mcp.catalog` — one dependency-free definition per tool (name, model-facing description,
+  argument schema). The schemas previously lived inside `server.py`, which cannot be imported
+  without the `mcp` package, so nobody off MCP could reach them.
+- `check_descriptions_intact()` and tests over every adapter: the sentences that say what a verdict
+  does **not** establish must survive the conversion. An adapter that dropped
+  "OUT_OF_SCOPE is NOT an approval" while keeping the name and schema would look correct and be
+  dangerous.
+
+### Changed
+- `server.dispatch` now delegates to `adapters.call`, so MCP and every other integration run the
+  same code path rather than two copies that can drift.
+
 ## [0.3.0]
 
 ### Added

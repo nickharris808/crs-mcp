@@ -3,6 +3,8 @@
 The agent that wrote your patch cannot mark its own homework.
 """
 
+from .adapters import anthropic_tools, call, json_schemas, openai_tools
+from .catalog import TOOL_SPECS, tool_names
 from .tools import (
     CERTIFIED,
     OUT_OF_SCOPE,
@@ -14,9 +16,15 @@ from .tools import (
     verify_certificate,
 )
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
+    "openai_tools",
+    "anthropic_tools",
+    "json_schemas",
+    "call",
+    "tool_names",
+    "TOOL_SPECS",
     "certify_guard",
     "count_exploitability",
     "verify_certificate",
