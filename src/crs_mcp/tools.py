@@ -70,6 +70,41 @@ class Verdict:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+    def _repr_html_(self) -> str:
+        """Notebook rendering.
+
+        OUT_OF_SCOPE gets its own colour and its own sentence. It is the verdict
+        most likely to be skimmed as "fine", and it is the one that means no
+        answer was reached at all.
+        """
+        from html import escape
+
+        colours = {
+            CERTIFIED: ("#0f7b3f", "#eaf6ee"),
+            PROVEN_UNSOUND: ("#a41b1b", "#fbeaea"),
+            OUT_OF_SCOPE: ("#8a5a00", "#fff6e5"),
+        }
+        meaning = {
+            CERTIFIED: (
+                "No forbidden state is admitted <b>over the declared box</b>. "
+                "This says nothing about states outside it."
+            ),
+            PROVEN_UNSOUND: "The guard admits a state the safety property forbids.",
+            OUT_OF_SCOPE: (
+                "<b>No verdict was reached.</b> This is not an approval and not a "
+                "clean bill of health."
+            ),
+        }
+        fg, bg = colours.get(self.verdict, ("#333", "#f2f2f2"))
+        return (
+            f'<div style="border-left:4px solid {fg};background:{bg};padding:10px 14px;'
+            f'font-family:system-ui,sans-serif;font-size:13px;color:#111;max-width:46em">'
+            f'<div style="font-weight:700;color:{fg};font-family:ui-monospace,monospace">'
+            f"{escape(self.verdict)}</div>"
+            f"<div>{escape(self.summary)}</div>"
+            f'<div style="margin-top:6px">{meaning.get(self.verdict, "")}</div></div>'
+        )
+
 
 # --------------------------------------------------------------------------- #
 # input parsing

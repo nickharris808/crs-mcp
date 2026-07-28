@@ -199,3 +199,39 @@ def test_langchain_adapter_refuses_loudly_when_langchain_is_absent():
         assert "openai_tools" in str(exc), "the refusal should name a working alternative"
     else:
         assert [t.name for t in tools] == [s.name for s in TOOL_SPECS]
+
+
+# --------------------------------------------------------------------------- #
+# notebook rendering
+# --------------------------------------------------------------------------- #
+
+
+def test_verdicts_render_in_a_notebook_without_losing_their_caveats():
+    from crs_mcp.tools import certify_guard
+
+    sound = certify_guard(SOUND["domain"], SOUND["guard"], SOUND["safety"], SOUND["box"])
+    html = sound._repr_html_()
+    assert "CERTIFIED" in html
+    assert "outside it" in html, "a CERTIFIED badge must carry its own boundary"
+
+
+def test_out_of_scope_is_not_rendered_as_a_pass():
+    from crs_mcp.tools import certify_guard
+
+    huge = certify_guard(
+        SOUND["domain"],
+        SOUND["guard"],
+        SOUND["safety"],
+        {"payload": [0, 10**9], "record_len": [0, 10**9]},
+    )
+    html = huge._repr_html_()
+    assert "OUT_OF_SCOPE" in html
+    assert "not an approval" in html.lower()
+    assert "CERTIFIED" not in html
+
+
+def test_a_hostile_summary_cannot_inject_markup():
+    from crs_mcp.tools import Verdict
+
+    html = Verdict("CERTIFIED", "<script>alert(1)</script>", {})._repr_html_()
+    assert "<script>" not in html
