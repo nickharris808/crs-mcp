@@ -88,10 +88,15 @@ unsoundness. Only counting states can prove a guard unsound, which is what `cert
 Most of the time an agent is asking *is this safe?*, not *how unsafe?*. `decide_guard` stops at the
 first escaping state instead of counting the whole region. Measured on an unsound guard:
 
-| Tool | Time |
-|---|---|
-| `certify_guard` (counts) | 287.8 ms |
-| `decide_guard` (stops at the first witness) | **0.03 ms** |
+| Box | `certify_guard` (counts) | `decide_guard` (first witness) | Factor |
+|---|---:|---:|---:|
+| `payload=0:255, record_len=0:255` | 0.15 ms | 0.0131 ms | 11x |
+| `payload=0:4095, record_len=0:4095` | 2.29 ms | 0.0134 ms | 171x |
+| `payload=0:65535, record_len=0:65535` | 36.72 ms | 0.0129 ms | 2,843x |
+
+Regenerate with `python benchmarks/decide_vs_count.py` in the `exploit-counter` repository, which is
+where the counting happens. The gap grows with the box because counting enumerates the whole
+violating region and deciding stops at the first escaping state.
 
 Identical verdicts — a test asserts they agree on 150 random specs. Sound guards cost the same
 either way, because the full enumeration is genuinely required to establish soundness.
@@ -117,6 +122,8 @@ volume. The limit is **500,000 enumerated points**. Measured on this machine:
 | `payload=0:500000, record_len=0:10^9` | 5.0 × 10^14 | 500,001 | `OUT_OF_SCOPE` | 0 ms |
 | three variables, `0:699` each | 343,000,000 | 490,000 | CERTIFIED | 212 ms |
 | three variables, `0:800` each | 513,922,401 | 641,601 | `OUT_OF_SCOPE` | 0 ms |
+
+The millisecond column is from one machine and will differ on yours; `python benchmarks/ceiling.py` will regenerate this table on yours. The volumes, the enumerated counts and the verdicts are exact and machine-independent.
 
 Every decision inside the cap lands in under a quarter second, so an agent call does not stall. That
 was not true before: profiling the worst case showed ~70% of the time inside Python's `Fraction`
@@ -237,7 +244,7 @@ pip install -e ".[dev]"
 pytest
 ```
 
-60 tests. `test_tools.py` covers verdict semantics; `test_server.py` does real `tools/list` and
+231 tests. `test_tools.py` covers verdict semantics; `test_server.py` does real `tools/list` and
 `tools/call` round-trips through the registered handlers, because a server whose tool functions are
 perfect but whose handlers are misregistered would pass every test in the other file.
 
