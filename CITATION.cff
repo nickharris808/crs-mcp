@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "crs-mcp: proof-gated code review for AI agents"
+abstract: >-
+  Guard soundness verdicts over MCP, OpenAI function calling, Anthropic tool use, or no framework at all.
+type: software
+authors:
+  - alias: nickharris808
+    website: "https://github.com/nickharris808"
+repository-code: "https://github.com/nickharris808/crs-mcp"
+url: "https://nickharris808.github.io/certified-discovery/"
+license: Apache-2.0
+date-released: "2026-07-28"
+keywords:
+  - formal verification
+  - proof-carrying code
+  - Farkas certificate
+  - static analysis
+  - software security

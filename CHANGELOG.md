@@ -3,6 +3,20 @@
 All notable changes to this package. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning is [semantic](https://semver.org/).
 
+## [0.4.1]
+
+### Fixed
+- **`explain_refusal` raised `AttributeError`** when handed anything that was not a verdict object.
+  An agent framework renders that as a tool error for the model to interpret, and "the tool errored"
+  is far more permissive than "that was not a verdict". It now says so in a sentence.
+
+### Added
+- `ARCHITECTURE.md`, `TROUBLESHOOTING.md`, `CITATION.cff`, and a documentation-parity test.
+- `tests/test_stress_adapters.py` — 111 adversarial tests: no hostile argument bundle may produce
+  `CERTIFIED`, every refusal must carry a reason, `decide_guard` and `certify_guard` must agree on
+  every hostile input as well as on a sweep of real guards, and a mutated emitted schema must not
+  affect the next caller.
+
 ## [0.4.0]
 
 ### Added

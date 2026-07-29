@@ -440,9 +440,24 @@ def verify_certificate(spec: Mapping[str, Any], cert: Mapping[str, Any]) -> dict
 
 
 def explain_refusal(verdict: Mapping[str, Any]) -> str:
-    """Turn a verdict into prose an agent can relay to a human."""
+    """Turn a verdict into prose an agent can relay to a human.
+
+    Anything that is not a verdict object gets a sentence saying so. This used to
+    raise `AttributeError` on `None`, which an agent framework renders as a tool
+    error for the model to interpret however it likes -- and "the tool errored"
+    is a far more permissive thing for a model to read than "that was not a
+    verdict".
+    """
+    if not isinstance(verdict, Mapping):
+        return (
+            "That is not a verdict object, so there is nothing to explain. Pass "
+            "the object returned by certify_guard or decide_guard. No claim is "
+            "being made about any guard."
+        )
     v = verdict.get("verdict")
     detail = verdict.get("detail", {}) or {}
+    if not isinstance(detail, Mapping):
+        detail = {}
 
     if v == CERTIFIED:
         return (
