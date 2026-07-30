@@ -111,6 +111,19 @@ class Verdict:
 # --------------------------------------------------------------------------- #
 
 
+
+def _num(detail: dict, key: str) -> str:
+    """Render a count, or say it is unknown -- never default a missing count to 0.
+
+    `detail.get(key, 0)` reads as "would enumerate 0 points", which is a confident
+    statement about a quantity nobody measured, in a message a user actually sees. Found
+    by `scripts/refusal_audit.py` once its roots were widened to reach `oss/` -- the
+    published packages had never been audited.
+    """
+    v = detail.get(key)
+    return f"{v:,}" if isinstance(v, int) else "an unrecorded number of"
+
+
 def parse_atoms(raw: Sequence[Mapping[str, Any]]) -> list[Atom]:
     """Accept either the certkit JSON atom form or a friendlier agent form.
 
@@ -493,10 +506,10 @@ def explain_refusal(verdict: Mapping[str, Any]) -> str:
     if reason in ("enumeration-too-large", "box-too-large"):
         return (
             "The request was OUT OF SCOPE, which is not a pass and not a failure. "
-            f"Deciding it would enumerate {detail.get('enumerated_points', 0):,} points, "
-            f"beyond the {detail.get('exact_cap', 0):,} this package will spend. Note that "
+            f"Deciding it would enumerate {_num(detail, 'enumerated_points')} points, "
+            f"beyond the {_num(detail, 'exact_cap')} this package will spend. Note that "
             "the limit is the enumerated product, not the "
-            f"{detail.get('box_volume', 0):,}-point box volume -- the widest variable "
+            f"{_num(detail, 'box_volume')}-point box volume -- the widest variable "
             f"({detail.get('closed_form_variable')!r}) is solved in closed form and costs "
             "nothing, so narrowing one of the *other* variables is what helps. Do not "
             "treat this as approval."
