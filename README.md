@@ -130,7 +130,7 @@ was not true before: profiling the worst case showed ~70% of the time inside Pyt
 type, so `exploit-counter` now runs an integer-only inner loop when every coefficient is an integer
 (which every bounds relation is). Integers are a subset of the rationals, so this is the same
 arithmetic — not a faster approximation — and `test_integer_and_rational_paths_agree` checks the two
-implementations against each other. Measured effect on the row above: **3,309 ms → 227 ms**.
+implementations against each other. **CORRECTED 2026-07-30 — the old figure was an overclaim.** Re-measured with a committed harness (`make bench-fast-path`, 7 paired reps, counts bit-identical every rep): **1,698.7 ms → 245.7 ms, a 6.82x median (range 6.65–6.98x)**. The integer absolute was roughly right; the `Fraction` baseline was cited about twice as slow as it measures, which roughly doubled the apparent ratio. Quote ~6x.
 
 Reproduce with `python benchmarks/ceiling.py` — that script generates exactly this table, and the
 numbers above are its real output. Timings are machine-dependent; the verdicts and enumerated counts
