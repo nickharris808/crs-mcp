@@ -111,7 +111,6 @@ class Verdict:
 # --------------------------------------------------------------------------- #
 
 
-
 def _num(detail: dict, key: str) -> str:
     """Render a count, or say it is unknown -- never default a missing count to 0.
 
